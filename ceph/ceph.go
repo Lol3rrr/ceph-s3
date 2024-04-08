@@ -11,7 +11,8 @@ import (
 )
 
 type Ceph struct {
-	token string
+	baseurl string
+	token   string
 }
 
 type AuthRequest struct {
@@ -23,13 +24,13 @@ type AuthResponse struct {
 	Token string `json:"token"`
 }
 
-func CephAuth(username string, password string) (Ceph, error) {
+func CephAuth(baseurl string, username string, password string) (Ceph, error) {
 	jsonBody, err := json.Marshal(AuthRequest{
 		Username: username,
 		Password: password,
 	})
 	bodyReader := bytes.NewReader(jsonBody)
-	req, err := http.NewRequest(http.MethodPost, "https://ceph.lol3r.com/api/auth", bodyReader)
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/auth", baseurl), bodyReader)
 	if err != nil {
 		return Ceph{}, nil
 	}
@@ -58,13 +59,13 @@ func CephAuth(username string, password string) (Ceph, error) {
 		return Ceph{}, errors.New("Got empty Token Response")
 	}
 
-	return Ceph{token: token}, nil
+	return Ceph{token: token, baseurl: baseurl}, nil
 }
 
 func (ceph *Ceph) RgwUsers() ([]string, error) {
 	jsonBody := []byte{}
 	bodyReader := bytes.NewReader(jsonBody)
-	req, err := http.NewRequest(http.MethodGet, "https://ceph.lol3r.com/api/rgw/user", bodyReader)
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/rgw/user", ceph.baseurl), bodyReader)
 	if err != nil {
 		return []string{}, nil
 	}
@@ -111,7 +112,7 @@ func (ceph *Ceph) AddKey(uid string, access_key string, secret_key string) (SetK
 		KeyType:   "s3",
 	})
 	bodyReader := bytes.NewReader(jsonBody)
-	url := fmt.Sprintf("https://ceph.lol3r.com/api/rgw/user/%s/key", uid)
+	url := fmt.Sprintf("%s/api/rgw/user/%s/key", ceph.baseurl, uid)
 	req, err := http.NewRequest(http.MethodPost, url, bodyReader)
 	if err != nil {
 		return SetKeyResponse{}, nil
@@ -159,7 +160,7 @@ func (ceph *Ceph) AddKey(uid string, access_key string, secret_key string) (SetK
 func (ceph *Ceph) RemoveKey(uid string, access_key string) error {
 	jsonBody := []byte{}
 	bodyReader := bytes.NewReader(jsonBody)
-	url := fmt.Sprintf("https://ceph.lol3r.com/api/rgw/user/%s/key?access_key=%s", uid, access_key)
+	url := fmt.Sprintf("%s/api/rgw/user/%s/key?access_key=%s", ceph.baseurl, uid, access_key)
 	req, err := http.NewRequest(http.MethodDelete, url, bodyReader)
 	if err != nil {
 		return nil

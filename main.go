@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 
@@ -50,9 +51,11 @@ func New() (interface{}, error) {
 }
 
 type MyDatabase struct {
-	// Variables for the database
+	baseurl  string
 	username string
 	password string
+
+	logger hclog.Logger
 }
 
 func newDatabase() (*MyDatabase, error) {
@@ -72,45 +75,35 @@ func (db *MyDatabase) Close() error {
 	return nil
 }
 
-func (db *MyDatabase) DeleteUser(ctx context.Context, req dbplugin.DeleteUserRequest) (dbplugin.DeleteUserResponse, error) {
-	ceph, err := ceph.CephAuth(db.username, db.password)
-	if err != nil {
-		return dbplugin.DeleteUserResponse{}, err
-	}
-
-	err = ceph.RemoveKey("testing", req.Username)
-	if err != nil {
-		return dbplugin.DeleteUserResponse{}, err
-	}
-
-	return dbplugin.DeleteUserResponse{}, nil
-}
-
 func (db *MyDatabase) Initialize(ctx context.Context, init_req dbplugin.InitializeRequest) (dbplugin.InitializeResponse, error) {
 	logger := hclog.Default()
 	logger.Error("New Database")
 	logger.Error("Init-Req: ", init_req)
 
-	db.username = init_req.Config["ceph_username"].(string)
-	db.password = init_req.Config["ceph_password"].(string)
+	conf := init_req.Config
 
-	ceph, err := ceph.CephAuth(db.username, db.password)
+	db.baseurl = conf["ceph_url"].(string)
+	db.username = conf["ceph_username"].(string)
+	db.password = conf["ceph_password"].(string)
+	db.logger = logger
+
+	_, err := ceph.CephAuth(db.baseurl, db.username, db.password)
 	if err != nil {
 		return dbplugin.InitializeResponse{}, err
 	}
 
-	users, err := ceph.RgwUsers()
-	if err != nil {
-		return dbplugin.InitializeResponse{}, err
-	}
-
-	logger.Error("Users: ", users)
-
-	return dbplugin.InitializeResponse{}, nil
+	return dbplugin.InitializeResponse{
+		Config: conf,
+	}, nil
 }
 
+// / Create a new Access for a User in Ceph
 func (db *MyDatabase) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (dbplugin.NewUserResponse, error) {
-	ceph, err := ceph.CephAuth(db.username, db.password)
+	statements := req.Statements
+	db.logger.Error("New User - Statements:")
+	db.logger.Error(fmt.Sprintf("%s", statements))
+
+	ceph, err := ceph.CephAuth(db.baseurl, db.username, db.password)
 	if err != nil {
 		return dbplugin.NewUserResponse{}, err
 	}
@@ -125,10 +118,29 @@ func (db *MyDatabase) NewUser(ctx context.Context, req dbplugin.NewUserRequest) 
 	}, nil
 }
 
-func (db *MyDatabase) Type() (string, error) {
-	return "Ceph-S3", nil
-}
-
 func (db *MyDatabase) UpdateUser(ctx context.Context, req dbplugin.UpdateUserRequest) (dbplugin.UpdateUserResponse, error) {
 	return dbplugin.UpdateUserResponse{}, nil
+}
+
+// / Delete Access for a User in Ceph
+func (db *MyDatabase) DeleteUser(ctx context.Context, req dbplugin.DeleteUserRequest) (dbplugin.DeleteUserResponse, error) {
+	statements := req.Statements
+	db.logger.Error("New User - Statements:")
+	db.logger.Error(fmt.Sprintf("%s", statements))
+
+	ceph, err := ceph.CephAuth(db.baseurl, db.username, db.password)
+	if err != nil {
+		return dbplugin.DeleteUserResponse{}, err
+	}
+
+	err = ceph.RemoveKey("testing", req.Username)
+	if err != nil {
+		return dbplugin.DeleteUserResponse{}, err
+	}
+
+	return dbplugin.DeleteUserResponse{}, nil
+}
+
+func (db *MyDatabase) Type() (string, error) {
+	return "Ceph-S3", nil
 }
